@@ -1,6 +1,8 @@
 package server
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -13,12 +15,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ranauzair/myshare/internal/api"
-	"github.com/ranauzair/myshare/internal/auth"
-	"github.com/ranauzair/myshare/internal/blob"
-	"github.com/ranauzair/myshare/internal/config"
-	"github.com/ranauzair/myshare/internal/sse"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/api"
+	"github.com/dynamo2k1/myshare/internal/auth"
+	"github.com/dynamo2k1/myshare/internal/blob"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 func newServer(t *testing.T, cfg config.Config) (*httptest.Server, *store.DB) {
@@ -288,5 +290,66 @@ func readJSON(t *testing.T, resp *http.Response, dst any) {
 	}
 	if err := json.Unmarshal(b, dst); err != nil {
 		t.Fatalf("decode %s: %v", b, err)
+	}
+}
+
+func TestDownloadArchiveAndDeleteAll(t *testing.T) {
+	srv, db := newServer(t, config.Defaults())
+
+	for _, n := range []string{"a.txt", "b.txt", "dup.txt", "dup.txt"} {
+		_ = upload(t, srv.URL, n, "body of "+n).Body.Close()
+	}
+
+	// Archive: a valid zip with one entry per file, duplicate names disambiguated.
+	resp, err := http.Get(srv.URL + "/api/files/archive.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "application/zip" {
+		t.Fatalf("archive content-type = %q", ct)
+	}
+	raw, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatalf("archive is not a valid zip: %v", err)
+	}
+	if len(zr.File) != 4 {
+		t.Fatalf("zip has %d entries, want 4", len(zr.File))
+	}
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		if names[f.Name] {
+			t.Fatalf("duplicate zip entry name %q", f.Name)
+		}
+		names[f.Name] = true
+	}
+	if !names["dup.txt"] || !names["dup-2.txt"] {
+		t.Errorf("expected dup.txt and dup-2.txt, got %v", names)
+	}
+
+	// Delete all: count returned, list emptied.
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/files", nil)
+	dr, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res struct {
+		Deleted int `json:"deleted"`
+	}
+	readJSON(t, dr, &res)
+	if res.Deleted != 4 {
+		t.Fatalf("deleted = %d, want 4", res.Deleted)
+	}
+	page, _ := db.ListFiles(context.Background(), store.FileListOptions{})
+	if page.Total != 0 {
+		t.Fatalf("after delete-all, %d files remain", page.Total)
+	}
+
+	// Archive of an empty set is a clean 404, not a broken zip.
+	er, _ := http.Get(srv.URL + "/api/files/archive.zip")
+	er.Body.Close()
+	if er.StatusCode != http.StatusNotFound {
+		t.Fatalf("empty archive status = %d, want 404", er.StatusCode)
 	}
 }

@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ranauzair/myshare/internal/config"
-	"github.com/ranauzair/myshare/internal/service"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/service"
 )
 
 func newServiceCmd() *cobra.Command {

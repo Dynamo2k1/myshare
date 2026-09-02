@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { startUpload } from "../lib/uploader";
 import { toast } from "../lib/toast";
+import { serverMode, currentDir } from "../lib/mode";
 
 // A full-window drop target. Dropping files anywhere uploads them; the overlay
 // only shows while a drag is in progress.
@@ -27,9 +28,13 @@ export function GlobalDrop() {
       setActive(false);
       const files = Array.from(e.dataTransfer?.files || []);
       if (!files.length) return;
+      const dest =
+        serverMode.value === "directory"
+          ? { endpoint: "/api/browse", dir: currentDir.value }
+          : {};
       for (const f of files) {
         const isImg = f.type.startsWith("image/");
-        startUpload(f, isImg ? "screenshot" : "file");
+        startUpload(f, isImg ? "screenshot" : "file", dest);
       }
       toast(`Uploading ${files.length} file${files.length > 1 ? "s" : ""}…`, "info");
     };

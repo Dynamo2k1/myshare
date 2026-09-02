@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/ranauzair/myshare/internal/auth"
-	"github.com/ranauzair/myshare/internal/config"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/auth"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 func newSetPasswordCmd() *cobra.Command {

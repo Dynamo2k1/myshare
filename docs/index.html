@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>MyShare — self-hosted file, clipboard &amp; screenshot transfer</title>
+    <meta
+      name="description"
+      content="A single self-hosted binary for moving text, screenshots and large files between your own devices over localhost or your LAN. Resumable multi-GB uploads, live sync, folder serving, no cloud."
+    />
+    <meta property="og:title" content="MyShare" />
+    <meta
+      property="og:description"
+      content="Self-hosted file / clipboard / screenshot transfer between your own devices. One binary, no cloud."
+    />
+    <meta property="og:type" content="website" />
+    <style>
+      :root {
+        --bg: #0b0d12;
+        --bg-soft: #0f1219;
+        --surface: #14171d;
+        --surface-2: #1b1f27;
+        --border: #262b34;
+        --border-soft: #1e222b;
+        --text: #e6e9ef;
+        --dim: #9aa4b2;
+        --faint: #6b7480;
+        --accent: #5b8bff;
+        --accent-2: #7c5cff;
+        --accent-weak: #16203a;
+        --ok: #4ec99a;
+        --warn: #e0b055;
+        --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        --maxw: 960px;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #ffffff;
+          --bg-soft: #f7f8fa;
+          --surface: #ffffff;
+          --surface-2: #f2f4f7;
+          --border: #e3e6ea;
+          --border-soft: #edeff2;
+          --text: #1a1f28;
+          --dim: #5b6470;
+          --faint: #99a1ac;
+          --accent: #2f6bff;
+          --accent-2: #6a45ff;
+          --accent-weak: #eaf1ff;
+        }
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 16px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      code, pre, kbd { font-family: var(--mono); }
+      .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 20px; }
+
+      /* header */
+      header {
+        position: sticky; top: 0; z-index: 20;
+        background: color-mix(in srgb, var(--bg) 82%, transparent);
+        backdrop-filter: saturate(160%) blur(10px);
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .nav {
+        display: flex; align-items: center; gap: 18px;
+        height: 58px;
+      }
+      .logo { font-weight: 750; letter-spacing: -0.01em; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+      .logo .mk {
+        width: 20px; height: 20px; border-radius: 6px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        display: inline-block;
+      }
+      .nav .spacer { flex: 1; }
+      .nav a.navlink { color: var(--dim); font-size: 14px; }
+      .nav a.navlink:hover { color: var(--text); text-decoration: none; }
+      @media (max-width: 640px) { .nav a.navlink { display: none; } }
+
+      .btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-weight: 600; font-size: 14px;
+        padding: 8px 16px; border-radius: 9px;
+        border: 1px solid var(--border);
+        background: var(--surface); color: var(--text);
+        transition: transform .06s ease, border-color .15s ease, background .15s ease;
+      }
+      .btn:hover { text-decoration: none; border-color: var(--faint); }
+      .btn:active { transform: translateY(1px); }
+      .btn.primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        border-color: transparent; color: #fff;
+      }
+      .btn.ghost { background: transparent; }
+      .btn svg { width: 15px; height: 15px; fill: currentColor; }
+
+      /* hero */
+      .hero { padding: 74px 0 40px; }
+      .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+      .badges img { height: 20px; }
+      h1 {
+        font-size: clamp(34px, 6vw, 52px);
+        line-height: 1.08; letter-spacing: -0.03em;
+        margin: 0 0 16px; font-weight: 800;
+      }
+      h1 .grad {
+        background: linear-gradient(120deg, var(--accent), var(--accent-2));
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .lede { font-size: clamp(16px, 2.4vw, 20px); color: var(--dim); max-width: 44ch; margin: 0 0 28px; }
+      .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 40px; }
+
+      /* terminal card */
+      .term {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 14px; overflow: hidden;
+        box-shadow: 0 24px 60px -24px rgba(0, 0, 0, .5);
+      }
+      .term-bar {
+        display: flex; align-items: center; gap: 7px;
+        padding: 11px 14px; border-bottom: 1px solid var(--border-soft);
+        background: var(--surface-2);
+      }
+      .term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a4150; display: inline-block; }
+      .term-bar .t { color: var(--faint); font-size: 12px; margin-left: 8px; font-family: var(--mono); }
+      .term pre {
+        margin: 0; padding: 18px 18px 20px; overflow-x: auto;
+        font-size: 13px; line-height: 1.7; color: var(--text);
+      }
+      .term .p { color: var(--accent); }
+      .term .c { color: var(--faint); }
+      .term .g { color: var(--ok); }
+      .term .d { color: var(--dim); }
+
+      /* sections */
+      section { padding: 56px 0; border-top: 1px solid var(--border-soft); }
+      h2 { font-size: clamp(22px, 3.6vw, 30px); letter-spacing: -0.02em; margin: 0 0 8px; }
+      .sub { color: var(--dim); margin: 0 0 28px; }
+
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+      .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 13px; padding: 18px 18px 16px;
+      }
+      .card .ic { font-size: 20px; }
+      .card h3 { margin: 8px 0 5px; font-size: 16px; }
+      .card p { margin: 0; color: var(--dim); font-size: 14px; }
+
+      pre.block {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 16px 18px; overflow-x: auto;
+        font-size: 13.5px; line-height: 1.6; position: relative;
+      }
+      pre.block .copy {
+        position: absolute; top: 8px; right: 8px;
+        font: 600 12px var(--sans); color: var(--dim);
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 7px; padding: 4px 9px; cursor: pointer;
+      }
+      pre.block .copy:hover { color: var(--text); }
+      code.inline {
+        background: var(--surface-2); border: 1px solid var(--border);
+        border-radius: 5px; padding: 0.1em 0.4em; font-size: 0.88em;
+      }
+
+      table { border-collapse: collapse; width: 100%; font-size: 14px; display: block; overflow-x: auto; }
+      th, td { border: 1px solid var(--border); padding: 9px 13px; text-align: left; vertical-align: top; }
+      th { background: var(--surface-2); font-weight: 650; }
+      .pill {
+        display: inline-block; font: 600 12px var(--mono);
+        background: var(--accent-weak); color: var(--accent);
+        border-radius: 6px; padding: 2px 8px;
+      }
+      .note {
+        background: var(--surface); border: 1px solid var(--border);
+        border-left: 3px solid var(--warn); border-radius: 9px;
+        padding: 13px 16px; color: var(--dim); font-size: 14px; margin-top: 18px;
+      }
+
+      /* mock UI */
+      .mock {
+        border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+        background: var(--surface); box-shadow: 0 24px 60px -30px rgba(0,0,0,.5);
+        margin-top: 8px;
+      }
+      .mock .top { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); background: var(--surface-2); }
+      .mock .top .u { flex: 1; height: 22px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font: 11px/22px var(--mono); color: var(--faint); padding: 0 8px; }
+      .mock .tabs { display: flex; gap: 4px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); font-size: 12px; color: var(--dim); }
+      .mock .tabs span { padding: 5px 9px; border-radius: 6px; }
+      .mock .tabs span.on { background: var(--accent-weak); color: var(--accent); }
+      .mock .rows { padding: 8px 14px 16px; }
+      .mock .r { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
+      .mock .r:last-child { border-bottom: 0; }
+      .mock .r .nm { flex: 1; }
+      .mock .r .sz { color: var(--faint); font: 12px var(--mono); }
+
+      footer {
+        border-top: 1px solid var(--border-soft); padding: 30px 0 50px;
+        color: var(--faint); font-size: 13px;
+      }
+      footer a { color: var(--dim); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap nav">
+        <span class="logo"><span class="mk"></span> MyShare</span>
+        <span class="spacer"></span>
+        <a class="navlink" href="#features">Features</a>
+        <a class="navlink" href="#access">Access</a>
+        <a class="navlink" href="#install">Install</a>
+        <a class="btn ghost" href="https://github.com/dynamo2k1/myshare">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </header>
+
+    <section class="hero" style="border-top:0">
+      <div class="wrap">
+        <div class="badges">
+          <a href="https://github.com/dynamo2k1/myshare/blob/main/LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-5b8bff" /></a>
+          <a href="https://github.com/dynamo2k1/myshare/releases"><img alt="Release" src="https://img.shields.io/github/v/release/dynamo2k1/myshare?color=7c5cff&label=release" /></a>
+          <a href="https://github.com/dynamo2k1/myshare/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/dynamo2k1/myshare/ci.yml?label=CI" /></a>
+          <a href="https://github.com/dynamo2k1/myshare/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/dynamo2k1/myshare?style=flat&color=4ec99a" /></a>
+          <img alt="Go" src="https://img.shields.io/badge/Go-single%20binary-00ADD8" />
+        </div>
+
+        <h1>Move files between your devices.<br /><span class="grad">No cloud. One binary.</span></h1>
+        <p class="lede">
+          Self-hosted text, screenshot and large-file transfer over localhost or your LAN.
+          Resumable multi-GB uploads, live sync, and a real folder browser — in ~16&nbsp;MB with
+          nothing else to install.
+        </p>
+
+        <div class="cta-row">
+          <a class="btn primary" href="#install">Install</a>
+          <a class="btn" href="https://github.com/dynamo2k1/myshare">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 .25a.75.75 0 01.673.418l1.882 3.815 4.21.612a.75.75 0 01.416 1.279l-3.046 2.97.719 4.192a.75.75 0 01-1.088.791L8 12.347l-3.766 1.98a.75.75 0 01-1.088-.79l.72-4.194L.818 6.374a.75.75 0 01.416-1.28l4.21-.611L7.327.668A.75.75 0 018 .25z"/></svg>
+            Star on GitHub
+          </a>
+        </div>
+
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><span class="t">~/Downloads — myshare</span></div>
+          <pre><span class="p">$</span> myshare . --host 0.0.0.0
+
+  MyShare is running
+
+  Local:    <span class="d">http://localhost:8787</span>
+  LAN:      <span class="d">http://192.168.1.20:8787</span>
+
+  Serving:  <span class="d">/home/you/Downloads</span>   <span class="c">(real folder — the Files tab browses it)</span>
+  Access:   <span class="g">lan</span>  <span class="c">(local network only — the internet can't reach it)</span>
+
+  <span class="c">Press Ctrl+C to stop.</span></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>What it does</h2>
+        <p class="sub">Everything you actually use a transfer tool for, and nothing you don't.</p>
+        <div class="grid">
+          <div class="card"><div class="ic">⬆️</div><h3>Resumable uploads</h3><p>A 12 GB file that drops at 7 GB resumes from ~7 GB — never restarts, never held in RAM. Measured: &lt;1 MiB heap for a 3 GiB upload.</p></div>
+          <div class="card"><div class="ic">📋</div><h3>Shared clipboard</h3><p>Paste text on the laptop, tap Copy on the phone. Works over plain-HTTP LAN, with URL / code / markdown detection.</p></div>
+          <div class="card"><div class="ic">🖼️</div><h3>Screenshot capture</h3><p><kbd>Ctrl</kbd>+<kbd>V</kbd> anywhere grabs the clipboard image and pushes it live to every open tab.</p></div>
+          <div class="card"><div class="ic">📁</div><h3>Folder mode</h3><p><code class="inline">myshare ~/dir</code> browses a real folder — subdirectories, upload into it, delete real files, live re-scan of outside changes.</p></div>
+          <div class="card"><div class="ic">▾</div><h3>Markdown scratchpad</h3><p>Paste raw markdown, see it rendered live, fullscreen reading mode. Auto-saves and syncs to every device — no button.</p></div>
+          <div class="card"><div class="ic">🔗</div><h3>Share links + QR</h3><p>CSPRNG tokens (only the hash is stored), expiry, download caps, one-time links, QR codes for LAN handoff.</p></div>
+          <div class="card"><div class="ic">↕️</div><h3>Live transfer manager</h3><p>Progress, speed, ETA; pause / resume / cancel / retry; survives a browser refresh.</p></div>
+          <div class="card"><div class="ic">⚙️</div><h3>Run as a service</h3><p>Per-user systemd unit / launchd agent / Scheduled Task — <code class="inline">myshare service install</code>, no admin.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>The interface</h2>
+        <p class="sub">Clean, fast, keyboard-friendly. Light &amp; dark. Fluid from phone to 4K.</p>
+        <div class="mock">
+          <div class="top"><i style="width:10px;height:10px;border-radius:50%;background:#3a4150;display:inline-block"></i><span class="u">http://192.168.1.20:8787</span></div>
+          <div class="tabs"><span class="on">Files</span><span>Clipboard</span><span>Screenshots</span><span>Snippets</span><span>Markdown</span><span>Transfers</span><span>Settings</span></div>
+          <div class="rows">
+            <div class="r"><span>📁</span><span class="nm">documents</span><span class="sz">—</span></div>
+            <div class="r"><span>🖼️</span><span class="nm">design-v3.png</span><span class="sz">4.2 MB</span></div>
+            <div class="r"><span>🗜️</span><span class="nm">backup-2026-09.tar.gz</span><span class="sz">11.8 GB</span></div>
+            <div class="r"><span>📝</span><span class="nm">notes.md</span><span class="sz">3 KB</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="access">
+      <div class="wrap">
+        <h2>Local, LAN, or public — you choose</h2>
+        <p class="sub">
+          MyShare filters connections by client IP before auth or routing. Default:
+          <span class="pill">local</span> for a loopback bind, <span class="pill">lan</span> for
+          <code class="inline">--host 0.0.0.0</code>.
+        </p>
+        <table>
+          <thead><tr><th>Mode</th><th>Who can reach it</th><th>Use when</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill">local</span></td><td>Only this machine (127.0.0.1 / ::1).</td><td>Single machine, or an SSH tunnel.</td></tr>
+            <tr><td><span class="pill">lan</span></td><td>Loopback + private ranges only. Anything else gets <code class="inline">403</code>.</td><td>Your Wi-Fi. Your phone works; the internet can't — <b>even with the port forwarded</b>.</td></tr>
+            <tr><td><span class="pill">public</span></td><td>Anyone, including the internet.</td><td>Only behind a VPN / reverse proxy, always with <code class="inline">--auth</code>.</td></tr>
+          </tbody>
+        </table>
+
+        <h3 style="margin-top:30px">Workflows</h3>
+        <pre class="block"><button class="copy" data-copy>copy</button><code># Just this laptop
+myshare
+
+# Laptop + phone on the same Wi-Fi (LAN-only, the safe default)
+myshare --host 0.0.0.0
+
+# Serve a real folder, keep no state afterwards
+myshare ~/Downloads --ephemeral
+
+# LAN-only + a password
+myshare set-password
+myshare --host 0.0.0.0 --auth</code></pre>
+        <div class="note">
+          Going public? Don't expose the port directly — put MyShare behind Tailscale, WireGuard,
+          or an authenticating reverse proxy. <code class="inline">--access public</code> logs a
+          loud warning at startup for a reason.
+        </div>
+      </div>
+    </section>
+
+    <section id="install">
+      <div class="wrap">
+        <h2>Install</h2>
+        <p class="sub">Linux, macOS, Windows — amd64 &amp; arm64. Into <code class="inline">~/.local/bin</code>, no root.</p>
+        <pre class="block"><button class="copy" data-copy>copy</button><code>git clone https://github.com/dynamo2k1/myshare &amp;&amp; cd myshare
+make build        # builds the UI (if npm is present) and ./bin/myshare
+make install      # copies only ./bin/myshare into ~/.local/bin
+
+myshare --help
+myshare --port 8787 --data-dir ~/MyShare</code></pre>
+        <p style="color:var(--dim);font-size:14px">
+          Windows: <code class="inline">powershell -ExecutionPolicy Bypass -File scripts\install.ps1</code> ·
+          Prebuilt binaries on the <a href="https://github.com/dynamo2k1/myshare/releases">Releases</a> page ·
+          Full docs in the <a href="https://github.com/dynamo2k1/myshare#readme">README</a>.
+        </p>
+
+        <h3 style="margin-top:30px">Why it's safe to run</h3>
+        <div class="grid">
+          <div class="card"><p>Content is stored by SHA-256 and addressed by opaque ID — <b>path traversal is impossible by construction</b>.</p></div>
+          <div class="card"><p>Uploaded HTML/SVG is served <code class="inline">attachment</code> + <code class="inline">nosniff</code>; strict CSP, same-origin only.</p></div>
+          <div class="card"><p>Optional argon2id auth with per-IP login rate limiting.</p></div>
+          <div class="card"><p>The <code class="inline">--access</code> IP filter runs on the real TCP peer, before auth.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        MyShare · MIT licensed ·
+        <a href="https://github.com/dynamo2k1/myshare">github.com/dynamo2k1/myshare</a><br />
+        A static overview — the real docs live in the repo README.
+      </div>
+    </footer>
+
+    <script>
+      document.querySelectorAll("[data-copy]").forEach((b) => {
+        b.addEventListener("click", async () => {
+          const code = b.parentElement.querySelector("code")?.innerText ?? "";
+          try {
+            await navigator.clipboard.writeText(code);
+            const t = b.textContent;
+            b.textContent = "copied ✓";
+            setTimeout(() => (b.textContent = t), 1200);
+          } catch {
+            b.textContent = "select & copy";
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

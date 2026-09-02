@@ -49,7 +49,9 @@ export function SettingsTab() {
           </button>
           <p class="hint">
             Other devices can use this address only if the server was started with
-            <code> --host 0.0.0.0</code>.
+            <code> --host 0.0.0.0</code>. Access is currently{" "}
+            <strong>{st?.access ?? "local"}</strong> — change it with{" "}
+            <code>--access local|lan|public</code>.
           </p>
         </div>
 
@@ -68,6 +70,14 @@ export function SettingsTab() {
                 </dd>
                 <dt>Data directory</dt>
                 <dd class="mono">{st.data_dir}</dd>
+                <dt>Access</dt>
+                <dd>
+                  {st.access === "local"
+                    ? "local — this machine only"
+                    : st.access === "lan"
+                      ? "lan — local network only"
+                      : "public — reachable from anywhere ⚠"}
+                </dd>
                 <dt>Authentication</dt>
                 <dd>{st.auth ? "enabled" : "off"}</dd>
                 <dt>Connected clients</dt>

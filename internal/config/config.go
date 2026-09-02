@@ -31,6 +31,27 @@ type Config struct {
 
 	TLS bool `toml:"tls"` // serve HTTPS with a self-signed cert
 
+	// ServeDir, when set, switches MyShare into "directory mode": the Files tab
+	// browses this real folder on disk. Uploads land in it, deletes remove the
+	// real file, subfolders are navigable, and external changes are picked up by
+	// a periodic rescan. MyShare's own metadata (clipboard, snippets, notes,
+	// share tokens, search) lives in <ServeDir>/.myshare/ — or a temp dir when
+	// Ephemeral is set — and is never confused with the served files.
+	ServeDir string `toml:"dir"`
+
+	// Ephemeral puts MyShare's database and upload-staging area in a temp
+	// directory that is deleted on a clean shutdown. It never touches a served
+	// directory's files — only MyShare's own scratch state.
+	Ephemeral bool `toml:"ephemeral"`
+
+	// Access controls WHO may reach the server, by client IP:
+	//   "local"  – loopback only (127.0.0.0/8, ::1)
+	//   "lan"    – loopback + private networks (10/8, 172.16/12, 192.168/16,
+	//              link-local, IPv6 ULA/link-local). The default when the server
+	//              is bound to a non-loopback address.
+	//   "public" – anyone. Requires an explicit choice; strongly pair with --auth.
+	Access string `toml:"access"`
+
 	CleanupInterval time.Duration `toml:"cleanup_interval"`
 
 	// Derived / not from file.
@@ -48,6 +69,7 @@ func Defaults() Config {
 		Auth:            false,
 		LogLevel:        "info",
 		TLS:             false,
+		Access:          "", // resolved in normalize() from Host
 		CleanupInterval: time.Hour,
 	}
 }
@@ -63,6 +85,9 @@ type Overrides struct {
 	Auth            *bool
 	LogLevel        *string
 	TLS             *bool
+	Access          *string
+	ServeDir        *string
+	Ephemeral       *bool
 	CleanupInterval *string
 	ConfigFile      *string // explicit config file path
 }
@@ -129,6 +154,15 @@ func Load(ov Overrides) (Config, error) {
 	if v := os.Getenv("MYSHARE_TLS"); v != "" {
 		cfg.TLS = truthy(v)
 	}
+	if v := os.Getenv("MYSHARE_ACCESS"); v != "" {
+		cfg.Access = v
+	}
+	if v := os.Getenv("MYSHARE_DIR"); v != "" {
+		cfg.ServeDir = v
+	}
+	if v := os.Getenv("MYSHARE_EPHEMERAL"); v != "" {
+		cfg.Ephemeral = truthy(v)
+	}
 	if v := os.Getenv("MYSHARE_CLEANUP_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
@@ -170,6 +204,15 @@ func Load(ov Overrides) (Config, error) {
 	if ov.TLS != nil {
 		cfg.TLS = *ov.TLS
 	}
+	if ov.Access != nil {
+		cfg.Access = *ov.Access
+	}
+	if ov.ServeDir != nil {
+		cfg.ServeDir = *ov.ServeDir
+	}
+	if ov.Ephemeral != nil {
+		cfg.Ephemeral = *ov.Ephemeral
+	}
 	if ov.CleanupInterval != nil {
 		d, err := time.ParseDuration(*ov.CleanupInterval)
 		if err != nil {
@@ -193,6 +236,26 @@ func (c *Config) normalize() error {
 	c.DataDir = abs
 	c.LogLevel = strings.ToLower(strings.TrimSpace(c.LogLevel))
 	c.Host = strings.TrimSpace(c.Host)
+
+	if c.ServeDir != "" {
+		sd, err := filepath.Abs(expandHome(c.ServeDir))
+		if err != nil {
+			return fmt.Errorf("resolve --dir: %w", err)
+		}
+		c.ServeDir = sd
+	}
+
+	// Default access policy from the bind address: a loopback bind is
+	// unreachable from elsewhere anyway ("local"); a wider bind defaults to
+	// "lan" so a stray port-forward can't expose it to the internet.
+	c.Access = strings.ToLower(strings.TrimSpace(c.Access))
+	if c.Access == "" {
+		if c.PublicHost() {
+			c.Access = "lan"
+		} else {
+			c.Access = "local"
+		}
+	}
 	return nil
 }
 
@@ -209,6 +272,11 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("invalid log level %q (want debug|info|warn|error)", c.LogLevel)
 	}
+	switch c.Access {
+	case "local", "lan", "public":
+	default:
+		return fmt.Errorf("invalid access %q (want local|lan|public)", c.Access)
+	}
 	if c.MaxFileSize < 0 || c.MaxStorage < 0 {
 		return fmt.Errorf("size limits must not be negative")
 	}
@@ -218,8 +286,20 @@ func (c *Config) Validate() error {
 	if c.CleanupInterval > 0 && c.CleanupInterval < time.Minute {
 		return fmt.Errorf("cleanup interval %s too small (min 1m)", c.CleanupInterval)
 	}
+	if c.ServeDir != "" {
+		st, err := os.Stat(c.ServeDir)
+		if err != nil {
+			return fmt.Errorf("--dir %s: %w", c.ServeDir, err)
+		}
+		if !st.IsDir() {
+			return fmt.Errorf("--dir %s is not a directory", c.ServeDir)
+		}
+	}
 	return nil
 }
+
+// DirectoryMode reports whether MyShare is serving a real folder from disk.
+func (c *Config) DirectoryMode() bool { return c.ServeDir != "" }
 
 // PublicHost reports whether the server is bound beyond loopback.
 func (c *Config) PublicHost() bool {
@@ -252,6 +332,13 @@ func mergeFile(dst *Config, src Config) {
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel
 	}
+	if src.Access != "" {
+		dst.Access = src.Access
+	}
+	if src.ServeDir != "" {
+		dst.ServeDir = src.ServeDir
+	}
+	dst.Ephemeral = src.Ephemeral
 	if src.CleanupInterval != 0 {
 		dst.CleanupInterval = src.CleanupInterval
 	}

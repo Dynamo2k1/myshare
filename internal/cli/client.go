@@ -16,7 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ranauzair/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/config"
 )
 
 // baseURL returns the local server URL from resolved config.

@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/ranauzair/myshare/internal/auth"
-	"github.com/ranauzair/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/auth"
+	"github.com/dynamo2k1/myshare/internal/config"
 )
 
 type authRoutes struct {

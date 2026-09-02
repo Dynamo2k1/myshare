@@ -1,5 +1,10 @@
 # MyShare
 
+[![CI](https://img.shields.io/github/actions/workflow/status/dynamo2k1/myshare/ci.yml?label=CI)](https://github.com/dynamo2k1/myshare/actions)
+[![Release](https://img.shields.io/github/v/release/dynamo2k1/myshare?color=7c5cff)](https://github.com/dynamo2k1/myshare/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-5b8bff)](LICENSE)
+![Go](https://img.shields.io/badge/Go-single%20binary-00ADD8)
+
 A single self-hosted binary for moving **text, screenshots and large files**
 between your own devices — over localhost or your LAN. Think "a personal
 AirForShare that runs on your own machine".
@@ -10,8 +15,8 @@ AirForShare that runs on your own machine".
   the phone. Press <kbd>Ctrl/Cmd</kbd>+<kbd>V</kbd> anywhere to push a screenshot
   to every connected device.
 - **One executable.** Go backend + embedded web UI + CLI. No Node, no Python, no
-  database server to run. `~30 MB` binary, `~25 KB` gzipped initial page load,
-  `~30 MB` RAM at rest and roughly flat during huge uploads.
+  database server to run. `~16 MB` binary, `~25 KB` gzipped initial page load, `~5 MB` RAM at rest
+  and roughly flat during huge uploads.
 - **Runs anywhere.** Linux, macOS, Windows — amd64 and arm64. Install into
   `~/.local/bin` with no root.
 
@@ -31,7 +36,7 @@ AirForShare that runs on your own machine".
 ### From source (any OS with Go 1.24+)
 
 ```sh
-git clone https://github.com/Dynamo2k1/MyShare.git && cd MyShare
+git clone https://github.com/dynamo2k1/myshare && cd myshare
 make build          # builds the frontend (if npm is present) and ./bin/myshare
 make install        # copies ./bin/myshare to ~/.local/bin  (no root)
 ```
@@ -109,6 +114,9 @@ CLI flags  >  MYSHARE_* environment variables  >  config file (TOML)  >  default
 | `--max-storage` | `MYSHARE_MAX_STORAGE` | unlimited | Cap on total stored bytes. Warns at 90%. |
 | `--auth` | `MYSHARE_AUTH` | `false` | Require a password (set it with `myshare set-password`). |
 | `--tls` | `MYSHARE_TLS` | `false` | HTTPS with a self-signed cert (full clipboard support on LAN). |
+| `--access` | `MYSHARE_ACCESS` | `local` / `lan` | Who may connect: `local` \| `lan` \| `public`. See [Access modes](#access-modes). |
+| `--dir` | `MYSHARE_DIR` | — | Serve a **real folder**: the Files tab browses it. Positional arg works too (`myshare ~/dir`). |
+| `--ephemeral` | `MYSHARE_EPHEMERAL` | `false` | Keep MyShare's own state in a temp dir, deleted on exit. Never touches served files. |
 | `--log-level` | `MYSHARE_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `--cleanup-interval` | `MYSHARE_CLEANUP_INTERVAL` | `1h` | Background cleanup cadence (min `1m`). |
 | `--config` | `MYSHARE_CONFIG` | OS default path | Path to a TOML config file. |
@@ -162,6 +170,43 @@ sqlite3 ~/MyShare/myshare.db ".backup ~/MyShare-db-backup.db"
 > native filesystem when you can.
 
 ---
+
+## Directory mode
+
+Point MyShare at a real folder and the Files tab becomes a browser for it —
+subdirectories, uploads that land in the folder you're viewing, deletes that
+remove the real file, and a 3-second re-scan that picks up changes made from
+outside MyShare.
+
+```sh
+myshare ~/Downloads              # serve that folder
+myshare .                        # serve the current directory
+myshare . --ephemeral            # + MyShare's own DB is a temp dir, wiped on exit
+```
+
+- `--ephemeral` only ever deletes **MyShare's** scratch state (a `/tmp/myshare-*`
+  dir). Your served files are left completely alone.
+- Non-ephemeral directory mode keeps its metadata in `<dir>/.myshare/` (hidden,
+  never shown in listings, refused as a path).
+- Every path is validated: `../`, absolute paths, symlink escapes and the
+  `.myshare` folder all return `400`.
+
+Without `--dir`, MyShare runs its normal persistent "personal hub" mode
+(content-addressed store under `~/MyShare`).
+
+## Access modes
+
+MyShare filters connections **by client IP, before auth or routing** — using the
+real TCP peer, not `X-Forwarded-For`.
+
+| Mode | Reaches it | Use when |
+|---|---|---|
+| `local` | loopback only | single machine, or via SSH tunnel |
+| `lan` | loopback + private ranges (10/8, 172.16/12, 192.168/16, link-local, IPv6 ULA) | your Wi-Fi — the internet can't reach it even with the port forwarded |
+| `public` | anyone | only behind a VPN / reverse proxy, always with `--auth` |
+
+Default: `local` for a loopback bind, `lan` for `--host 0.0.0.0`. The mode shows
+in the startup banner and the Settings tab.
 
 ## LAN access
 

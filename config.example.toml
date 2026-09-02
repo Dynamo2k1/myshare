@@ -31,6 +31,15 @@ auth = false
 # debug | info | warn | error
 log_level = "info"
 
+# Who may connect, enforced by client IP before anything else:
+#   "local"  – only this machine (loopback)
+#   "lan"    – only devices on your local network (private IP ranges) — the
+#              default when host is not 127.0.0.1
+#   "public" – anyone, including the internet. Only use behind a VPN or a
+#              trusted reverse proxy, and always with auth = true.
+# Leave unset to auto-pick: "local" for a loopback host, "lan" otherwise.
+access = ""
+
 # Serve HTTPS with an auto-generated self-signed certificate. This makes the
 # browser Clipboard API (including copying images) work from other LAN devices,
 # at the cost of a one-time certificate warning on each device.

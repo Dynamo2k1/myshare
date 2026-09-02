@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ranauzair/myshare/internal/netinfo"
+	"github.com/dynamo2k1/myshare/internal/netinfo"
 )
 
 // ensureTLSCert returns paths to a cert/key pair in <dataDir>/certs, generating

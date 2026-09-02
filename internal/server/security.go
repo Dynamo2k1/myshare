@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ranauzair/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/config"
 )
 
 // securityHeaders sets a strict, same-origin-only policy. The SPA is fully

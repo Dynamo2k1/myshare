@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ranauzair/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/sse"
 )
 
 // maxTextBytes bounds a single clipboard/snippet/note body. Generous but finite

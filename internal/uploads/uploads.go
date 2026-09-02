@@ -22,10 +22,11 @@ import (
 	"github.com/tus/tusd/v2/pkg/memorylocker"
 	xslog "golang.org/x/exp/slog"
 
-	"github.com/ranauzair/myshare/internal/blob"
-	"github.com/ranauzair/myshare/internal/safepath"
-	"github.com/ranauzair/myshare/internal/sse"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/blob"
+	"github.com/dynamo2k1/myshare/internal/fsbrowse"
+	"github.com/dynamo2k1/myshare/internal/safepath"
+	"github.com/dynamo2k1/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 // Deps are what the upload subsystem needs from the rest of the app.
@@ -34,10 +35,11 @@ type Deps struct {
 	Blob        *blob.Store
 	Hub         *sse.Hub
 	Log         *slog.Logger
-	UploadDir   string // where tusd keeps in-progress .bin/.info files
-	MaxFileSize int64  // 0 = unlimited
-	MaxStorage  int64  // 0 = unlimited
-	BasePath    string // e.g. "/api/tus/"
+	UploadDir   string            // where tusd keeps in-progress .bin/.info files
+	MaxFileSize int64             // 0 = unlimited
+	MaxStorage  int64             // 0 = unlimited
+	BasePath    string            // e.g. "/api/tus/"
+	Browser     *fsbrowse.Browser // set in directory mode: finalise into the served folder
 }
 
 // Manager owns the tus handler and its finalizer loop.
@@ -164,6 +166,25 @@ func (m *Manager) onComplete(ev tushandler.HookEvent) {
 	name, kind, mimeType := metaOf(ev.Upload.MetaData)
 
 	m.deps.Log.Info("upload completed", "id", id, "bytes", ev.Upload.Size)
+
+	// Directory mode: move the finished upload straight into the served folder
+	// at the target subdir (tus metadata "dir"), no hashing or blob store.
+	if m.deps.Browser != nil {
+		targetDir := ev.Upload.MetaData["dir"]
+		e, err := m.deps.Browser.AdoptFile(targetDir, name, binPath)
+		if err != nil {
+			m.finalizeFailed(ctx, id, "adopt into folder", err)
+			return
+		}
+		_ = os.Remove(binPath + ".info")
+		if err := m.deps.DB.CompleteUploadSession(ctx, id, e.Path, ev.Upload.Size); err != nil {
+			m.deps.Log.Warn("mark upload complete", "id", id, "err", err)
+		}
+		m.deps.Hub.Broadcast(sse.Event{Type: "transfer.completed", Data: map[string]any{"id": id, "entry": e}})
+		m.deps.Hub.Broadcast(sse.Event{Type: "browse.changed", Data: map[string]string{"dir": e.Path}})
+		m.deps.Log.Info("upload finalized (folder)", "id", id, "path", e.Path)
+		return
+	}
 
 	bin, err := os.Open(binPath)
 	if err != nil {

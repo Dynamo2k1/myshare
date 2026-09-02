@@ -6,8 +6,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ranauzair/myshare/internal/shares"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/shares"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 type createShareReq struct {

@@ -2,7 +2,7 @@
 // for transferring text, screenshots and large files between your own devices.
 package main
 
-import "github.com/ranauzair/myshare/internal/cli"
+import "github.com/dynamo2k1/myshare/internal/cli"
 
 // version is overridden at build time with:
 //

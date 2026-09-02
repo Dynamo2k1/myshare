@@ -14,15 +14,16 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ranauzair/myshare/internal/api"
-	"github.com/ranauzair/myshare/internal/auth"
-	"github.com/ranauzair/myshare/internal/blob"
-	"github.com/ranauzair/myshare/internal/config"
-	"github.com/ranauzair/myshare/internal/diskusage"
-	"github.com/ranauzair/myshare/internal/server"
-	"github.com/ranauzair/myshare/internal/sse"
-	"github.com/ranauzair/myshare/internal/store"
-	"github.com/ranauzair/myshare/internal/uploads"
+	"github.com/dynamo2k1/myshare/internal/api"
+	"github.com/dynamo2k1/myshare/internal/auth"
+	"github.com/dynamo2k1/myshare/internal/blob"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/diskusage"
+	"github.com/dynamo2k1/myshare/internal/fsbrowse"
+	"github.com/dynamo2k1/myshare/internal/server"
+	"github.com/dynamo2k1/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/uploads"
 )
 
 // Layout is the on-disk directory structure under the data dir.
@@ -50,21 +51,56 @@ type App struct {
 	Log    *slog.Logger
 	Layout Layout
 
-	db      *store.DB
-	blob    *blob.Store
-	hub     *sse.Hub
-	authMgr *auth.Manager
-	uploads *uploads.Manager
-	handler http.Handler
-	disk    diskusage.Usage
-	started time.Time
+	db           *store.DB
+	blob         *blob.Store
+	hub          *sse.Hub
+	authMgr      *auth.Manager
+	uploads      *uploads.Manager
+	handler      http.Handler
+	disk         diskusage.Usage
+	started      time.Time
+	browser      *fsbrowse.Browser
+	ephemeralDir string // non-empty -> os.RemoveAll on clean shutdown
 }
 
 // New builds the data layout and wires every subsystem, but does not bind a
 // socket. Call Serve with an already-bound listener.
 func New(ctx context.Context, cfg config.Config, log *slog.Logger, devProxy string) (*App, error) {
 	start := time.Now()
-	lay := layoutFor(cfg.DataDir)
+
+	// Decide where MyShare's own state (database + upload staging) lives.
+	//   --ephemeral   -> a temp dir, removed on clean shutdown
+	//   --dir <path>  -> <path>/.myshare  (hidden, never listed as a served file)
+	//   otherwise     -> the configured data dir (default ~/MyShare)
+	stateDir := cfg.DataDir
+	ephemeralDir := ""
+	var browser *fsbrowse.Browser
+
+	if cfg.DirectoryMode() {
+		b, err := fsbrowse.New(cfg.ServeDir)
+		if err != nil {
+			return nil, fmt.Errorf("open --dir: %w", err)
+		}
+		browser = b
+		if !cfg.Ephemeral {
+			md, err := b.MetaDir()
+			if err != nil {
+				return nil, err
+			}
+			stateDir = md
+		}
+	}
+	if cfg.Ephemeral {
+		tmp, err := os.MkdirTemp("", "myshare-")
+		if err != nil {
+			return nil, fmt.Errorf("create ephemeral dir: %w", err)
+		}
+		stateDir = tmp
+		ephemeralDir = tmp
+		log.Info("ephemeral mode — state is temporary and will be deleted on exit", "path", tmp)
+	}
+
+	lay := layoutFor(stateDir)
 	for _, d := range []string{lay.Root, lay.BlobDir, lay.UploadDir, lay.TempDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, fmt.Errorf("create %s: %w", d, err)
@@ -97,7 +133,8 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, devProxy stri
 	authMgr := auth.New(db, cfg.Auth)
 
 	apiSvc := &api.API{
-		DB: db, Blob: blobStore, Hub: hub, Cfg: cfg, Log: log, TempDir: lay.TempDir,
+		DB: db, Blob: blobStore, Hub: hub, Cfg: cfg, Log: log,
+		TempDir: lay.TempDir, Browser: browser,
 	}
 
 	upMgr, err := uploads.New(uploads.Deps{
@@ -106,6 +143,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, devProxy stri
 		MaxFileSize: cfg.MaxFileSize,
 		MaxStorage:  cfg.MaxStorage,
 		BasePath:    "/api/tus/",
+		Browser:     browser,
 	})
 	if err != nil {
 		db.Close()
@@ -121,6 +159,7 @@ func New(ctx context.Context, cfg config.Config, log *slog.Logger, devProxy stri
 		Cfg: cfg, Log: log, Layout: lay,
 		db: db, blob: blobStore, hub: hub, authMgr: authMgr,
 		uploads: upMgr, handler: h, disk: du, started: start,
+		browser: browser, ephemeralDir: ephemeralDir,
 	}, nil
 }
 
@@ -138,6 +177,17 @@ func (a *App) Disk() diskusage.Usage { return a.disk }
 func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	defer a.db.Close()
 	defer a.uploads.Shutdown()
+	// Ephemeral state is removed last, after the DB is closed. A served
+	// directory's real files are NEVER touched here.
+	if a.ephemeralDir != "" {
+		defer func() {
+			if err := os.RemoveAll(a.ephemeralDir); err != nil {
+				a.Log.Warn("remove ephemeral dir", "path", a.ephemeralDir, "err", err)
+			} else {
+				a.Log.Info("removed ephemeral state", "path", a.ephemeralDir)
+			}
+		}()
+	}
 
 	srv := &http.Server{
 		Handler:           a.handler,
@@ -149,6 +199,9 @@ func (a *App) Serve(ctx context.Context, ln net.Listener) error {
 	cleanupCtx, stopCleanup := context.WithCancel(ctx)
 	defer stopCleanup()
 	go a.runCleanup(cleanupCtx)
+	if a.browser != nil {
+		go a.watchServedDir(cleanupCtx)
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

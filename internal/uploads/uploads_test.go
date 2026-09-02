@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ranauzair/myshare/internal/blob"
-	"github.com/ranauzair/myshare/internal/sse"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/blob"
+	"github.com/dynamo2k1/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 type harness struct {

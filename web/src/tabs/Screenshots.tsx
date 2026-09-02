@@ -16,6 +16,7 @@ export function ScreenshotsTab() {
   const list = useList<FileItem>(pathFn, ["file.created", "file.updated", "file.deleted"]);
   const fileInput = useRef<HTMLInputElement>(null);
   const [confirm, setConfirm] = useState<FileItem | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
   const secure = canCopyImage();
 
   const copyToClipboard = async (f: FileItem) => {
@@ -34,6 +35,17 @@ export function ScreenshotsTab() {
     list.setItems((xs) => xs.filter((x) => x.id !== f.id));
   };
 
+  const deleteAll = async () => {
+    try {
+      const r = await api.del<{ deleted: number }>("/api/files?kind=screenshot");
+      list.setItems(() => []);
+      list.reload();
+      toast(`Deleted ${r.deleted} screenshot${r.deleted === 1 ? "" : "s"}`, "success");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
+
   return (
     <section class="tab-panel">
       <div class="panel-head">
@@ -49,6 +61,16 @@ export function ScreenshotsTab() {
           <button class="btn btn-primary" onClick={() => fileInput.current?.click()}>
             Add image
           </button>
+          {list.total > 0 && (
+            <>
+              <a class="btn" href="/api/files/archive.zip?kind=screenshot" download>
+                Download all (.zip)
+              </a>
+              <button class="btn btn-danger" onClick={() => setConfirmAll(true)}>
+                Delete all
+              </button>
+            </>
+          )}
           <input
             ref={fileInput}
             type="file"
@@ -136,6 +158,17 @@ export function ScreenshotsTab() {
           message={`Delete “${confirm.name}”?`}
           onConfirm={() => del(confirm)}
           onClose={() => setConfirm(null)}
+        />
+      )}
+      {confirmAll && (
+        <ConfirmDialog
+          title="Delete all screenshots"
+          message={`Permanently delete all ${list.total} screenshot${
+            list.total === 1 ? "" : "s"
+          }? This cannot be undone.`}
+          confirmLabel="Delete all"
+          onConfirm={deleteAll}
+          onClose={() => setConfirmAll(false)}
         />
       )}
     </section>

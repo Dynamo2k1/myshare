@@ -1,4 +1,4 @@
-module github.com/ranauzair/myshare
+module github.com/dynamo2k1/myshare
 
 go 1.27.0
 

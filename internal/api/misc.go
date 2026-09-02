@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ranauzair/myshare/internal/diskusage"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/diskusage"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 // Version is stamped by the linker at build time; falls back to the module
@@ -41,6 +42,10 @@ func (a *API) status(w http.ResponseWriter, r *http.Request) {
 		"data_dir":      a.Cfg.DataDir,
 		"tls":           a.Cfg.TLS,
 		"auth":          a.Cfg.Auth,
+		"access":        a.Cfg.Access,
+		"mode":          modeName(a.Cfg),
+		"serve_dir":     a.Cfg.ServeDir,
+		"ephemeral":     a.Cfg.Ephemeral,
 		"stats":         st,
 		"connected":     a.Hub.Count(),
 		"disk":          du,
@@ -68,6 +73,13 @@ func (a *API) removeTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func modeName(c config.Config) string {
+	if c.DirectoryMode() {
+		return "directory"
+	}
+	return "hub"
 }
 
 func version() string {

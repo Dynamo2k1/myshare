@@ -1,19 +1,21 @@
 package api
 
 import (
+	"archive/zip"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ranauzair/myshare/internal/safepath"
-	"github.com/ranauzair/myshare/internal/sse"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/safepath"
+	"github.com/dynamo2k1/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 // inlineTypes are the only content types served with an inline disposition.
@@ -95,6 +97,102 @@ func (a *API) deleteFile(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Hub.BroadcastExcept(originID(r), sse.Event{Type: "file.deleted", Data: map[string]string{"id": id}})
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteAllFiles bulk-deletes every live file (optionally ?kind=screenshot),
+// releasing blob references and removing orphaned bytes.
+func (a *API) deleteAllFiles(w http.ResponseWriter, r *http.Request) {
+	kind := r.URL.Query().Get("kind")
+	if kind != "" && kind != "file" && kind != "screenshot" {
+		a.fail(w, r, http.StatusBadRequest, "bad_request", "Unknown kind.", nil)
+		return
+	}
+	hashes, n, err := a.DB.DeleteAllFiles(r.Context(), kind)
+	if err != nil {
+		a.failStore(w, r, err)
+		return
+	}
+	for _, h := range hashes {
+		if err := a.Blob.Remove(h); err != nil {
+			a.Log.Warn("blob remove after delete-all", "hash", h, "err", err)
+		}
+	}
+	a.Hub.Broadcast(sse.Event{Type: "file.deleted", Data: map[string]any{"all": true, "kind": kind}})
+	a.Log.Info("deleted all files", "count", n, "kind", kind)
+	writeJSON(w, http.StatusOK, map[string]int{"deleted": n})
+}
+
+// downloadArchive streams a .zip of every live file (optionally ?kind=). The zip
+// is written straight to the response with a bounded buffer — no file, and no
+// whole archive, is ever held in memory.
+func (a *API) downloadArchive(w http.ResponseWriter, r *http.Request) {
+	kind := r.URL.Query().Get("kind")
+	files, err := a.DB.AllLiveFiles(r.Context(), kind)
+	if err != nil {
+		a.failStore(w, r, err)
+		return
+	}
+	if len(files) == 0 {
+		a.fail(w, r, http.StatusNotFound, "empty", "There are no files to download.", nil)
+		return
+	}
+
+	name := "myshare-files"
+	if kind == "screenshot" {
+		name = "myshare-screenshots"
+	}
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition",
+		fmt.Sprintf("attachment; filename=%q", name+"-"+time.Now().Format("2006-01-02")+".zip"))
+
+	zw := zip.NewWriter(w)
+	defer zw.Close()
+
+	buf := make([]byte, 1<<20)
+	used := map[string]int{}
+	for _, f := range files {
+		entryName := uniqueName(used, safepath.SanitizeFilename(f.Name))
+		hdr := &zip.FileHeader{
+			Name:     entryName,
+			Method:   zip.Store, // uploads are usually already compressed
+			Modified: time.Unix(f.UpdatedAt, 0),
+		}
+		hdr.SetMode(0o644)
+		ew, err := zw.CreateHeader(hdr)
+		if err != nil {
+			a.Log.Warn("zip entry", "file", f.ID, "err", err)
+			return
+		}
+		blob, err := a.Blob.Open(f.Hash)
+		if err != nil {
+			a.Log.Warn("zip open blob", "file", f.ID, "hash", f.Hash, "err", err)
+			continue
+		}
+		_, err = io.CopyBuffer(ew, blob, buf)
+		blob.Close()
+		if err != nil {
+			a.Log.Warn("zip copy", "file", f.ID, "err", err)
+			return // client likely disconnected
+		}
+	}
+}
+
+func uniqueName(used map[string]int, name string) string {
+	if used[name] == 0 {
+		used[name] = 1
+		return name
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for {
+		used[name]++
+		cand := stem + "-" + strconv.Itoa(used[name]) + ext
+		if used[cand] == 0 {
+			used[cand] = 1
+			return cand
+		}
+	}
 }
 
 // uploadFileDirect handles a plain multipart or raw-body upload for small files.

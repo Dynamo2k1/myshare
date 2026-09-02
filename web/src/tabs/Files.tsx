@@ -27,6 +27,18 @@ export function FilesTab() {
   const [share, setShare] = useState<FileItem | null>(null);
   const [renaming, setRenaming] = useState<string>("");
   const [renameVal, setRenameVal] = useState("");
+  const [confirmAll, setConfirmAll] = useState(false);
+
+  const deleteAll = async () => {
+    try {
+      const r = await api.del<{ deleted: number }>("/api/files");
+      list.setItems(() => []);
+      list.reload();
+      toast(`Deleted ${r.deleted} file${r.deleted === 1 ? "" : "s"}`, "success");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  };
 
   useEffect(() => {
     list.reload();
@@ -79,6 +91,16 @@ export function FilesTab() {
           <button class="btn btn-primary" onClick={() => fileInput.current?.click()}>
             Upload
           </button>
+          {list.total > 0 && (
+            <>
+              <a class="btn" href="/api/files/archive.zip" download>
+                Download all (.zip)
+              </a>
+              <button class="btn btn-danger" onClick={() => setConfirmAll(true)}>
+                Delete all
+              </button>
+            </>
+          )}
           <input
             ref={fileInput}
             type="file"
@@ -199,6 +221,17 @@ export function FilesTab() {
           message={`Delete “${confirm.name}”? This removes it from storage.`}
           onConfirm={() => del(confirm)}
           onClose={() => setConfirm(null)}
+        />
+      )}
+      {confirmAll && (
+        <ConfirmDialog
+          title="Delete all files"
+          message={`Permanently delete all ${list.total} file${
+            list.total === 1 ? "" : "s"
+          }? This cannot be undone.`}
+          confirmLabel="Delete all"
+          onConfirm={deleteAll}
+          onClose={() => setConfirmAll(false)}
         />
       )}
       {share && <ShareDialog file={share} onClose={() => setShare(null)} />}

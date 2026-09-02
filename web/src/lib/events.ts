@@ -13,6 +13,8 @@ const KNOWN = [
   "clipboard.created", "clipboard.updated", "clipboard.deleted", "clipboard.cleared",
   "snippet.created", "snippet.updated", "snippet.deleted",
   "note.created", "note.updated", "note.deleted",
+  "scratch.updated",
+  "browse.changed",
   "transfer.created", "transfer.progress", "transfer.completed", "transfer.failed", "transfer.removed",
 ];
 

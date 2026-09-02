@@ -64,6 +64,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 export const api = {
   get: <T,>(p: string) => req<T>("GET", p),
   post: <T,>(p: string, b?: unknown) => req<T>("POST", p, b),
+  put: <T,>(p: string, b?: unknown) => req<T>("PUT", p, b),
   patch: <T,>(p: string, b?: unknown) => req<T>("PATCH", p, b),
   del: <T,>(p: string, b?: unknown) => req<T>("DELETE", p, b),
 };
@@ -146,6 +147,7 @@ export interface Status {
   data_dir: string;
   tls: boolean;
   auth: boolean;
+  access: "local" | "lan" | "public";
   connected: number;
   stats: Record<string, number>;
   disk: { total: number; free: number; used: number; fs_type: string; unsafe_wal: boolean };

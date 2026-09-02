@@ -12,10 +12,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ranauzair/myshare/internal/blob"
-	"github.com/ranauzair/myshare/internal/config"
-	"github.com/ranauzair/myshare/internal/sse"
-	"github.com/ranauzair/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/internal/blob"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/fsbrowse"
+	"github.com/dynamo2k1/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/store"
 )
 
 // API bundles the dependencies every handler needs.
@@ -28,6 +29,10 @@ type API struct {
 
 	// TempDir is where direct (non-tus) uploads are streamed before adoption.
 	TempDir string
+
+	// Browser is set only in directory mode; when non-nil the Files tab browses
+	// a real folder instead of the content-addressed blob store.
+	Browser *fsbrowse.Browser
 }
 
 // Routes returns the chi router for everything under /api (auth middleware is
@@ -35,11 +40,25 @@ type API struct {
 func (a *API) Routes() chi.Router {
 	r := chi.NewRouter()
 
-	r.Get("/files", a.listFiles)
-	r.Post("/files", a.uploadFileDirect)
-	r.Get("/files/{id}", a.getFile)
-	r.Patch("/files/{id}", a.patchFile)
-	r.Delete("/files/{id}", a.deleteFile)
+	if a.Browser != nil {
+		// Directory mode: the Files tab browses a real folder.
+		r.Get("/browse", a.browseList)
+		r.Post("/browse", a.browseUpload)
+		r.Patch("/browse", a.browsePatch)
+		r.Delete("/browse", a.browseDelete)
+		r.Get("/browse/raw", a.browseRaw)
+		r.Get("/browse/archive.zip", a.browseArchive)
+		r.Delete("/browse/all", a.browseDeleteAll)
+		r.Post("/browse/mkdir", a.browseMkdir)
+	} else {
+		r.Get("/files", a.listFiles)
+		r.Post("/files", a.uploadFileDirect)
+		r.Delete("/files", a.deleteAllFiles)
+		r.Get("/files/archive.zip", a.downloadArchive)
+		r.Get("/files/{id}", a.getFile)
+		r.Patch("/files/{id}", a.patchFile)
+		r.Delete("/files/{id}", a.deleteFile)
+	}
 
 	r.Get("/clipboard", a.listClipboard)
 	r.Post("/clipboard", a.createClipboard)
@@ -66,6 +85,9 @@ func (a *API) Routes() chi.Router {
 
 	r.Get("/transfers", a.listTransfers)
 	r.Delete("/transfers/{id}", a.removeTransfer)
+
+	r.Get("/scratch", a.getScratch)
+	r.Put("/scratch", a.putScratch)
 
 	r.Get("/search", a.search)
 	r.Get("/status", a.status)

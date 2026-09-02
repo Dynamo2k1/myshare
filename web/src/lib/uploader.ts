@@ -69,7 +69,19 @@ function trackSpeed(key: string, uploaded: number) {
   patch(key, { uploaded });
 }
 
-export function startUpload(file: File, kind: "file" | "screenshot" = "file") {
+// dest picks where the upload lands. Default: the personal store. In directory
+// mode the Files tab passes { endpoint: "/api/browse", dir: <cwd> } to drop the
+// file into a real folder instead.
+export interface UploadDest {
+  endpoint?: string; // "/api/browse" for directory mode
+  dir?: string; // target subdir (directory mode)
+}
+
+export function startUpload(
+  file: File,
+  kind: "file" | "screenshot" = "file",
+  dest: UploadDest = {},
+) {
   const key = `${file.name}:${file.size}:${file.lastModified}:${Math.random().toString(36).slice(2)}`;
   const base: UploadTask = {
     key,
@@ -83,19 +95,23 @@ export function startUpload(file: File, kind: "file" | "screenshot" = "file") {
   upsert(base);
 
   if (file.size < TUS_THRESHOLD) {
-    directUpload(key, file, kind);
+    directUpload(key, file, kind, dest);
   } else {
-    tusUpload(key, file, kind);
+    tusUpload(key, file, kind, dest);
   }
   return key;
 }
 
-function directUpload(key: string, file: File, kind: string) {
+function directUpload(key: string, file: File, kind: string, dest: UploadDest) {
   const xhr = new XMLHttpRequest();
   patch(key, { _xhr: xhr });
   const fd = new FormData();
   fd.append("file", file, file.name);
-  xhr.open("POST", `/api/files?kind=${encodeURIComponent(kind)}`);
+  const url =
+    dest.endpoint === "/api/browse"
+      ? `/api/browse?path=${encodeURIComponent(dest.dir || "")}`
+      : `/api/files?kind=${encodeURIComponent(kind)}`;
+  xhr.open("POST", url);
   xhr.setRequestHeader("X-MyShare-Client", clientId);
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) trackSpeed(key, e.loaded);
@@ -121,18 +137,20 @@ function directUpload(key: string, file: File, kind: string) {
   xhr.send(fd);
 }
 
-async function tusUpload(key: string, file: File, kind: string) {
+async function tusUpload(key: string, file: File, kind: string, dest: UploadDest) {
   const tus = await loadTus();
+  const meta: Record<string, string> = {
+    filename: file.name,
+    filetype: file.type || "application/octet-stream",
+    kind,
+  };
+  if (dest.endpoint === "/api/browse") meta.dir = dest.dir || "";
   const upload = new tus.Upload(file, {
     endpoint: "/api/tus/",
     retryDelays: [0, 1000, 3000, 5000, 10000, 20000],
     chunkSize: 16 * 1024 * 1024,
     removeFingerprintOnSuccess: true,
-    metadata: {
-      filename: file.name,
-      filetype: file.type || "application/octet-stream",
-      kind,
-    },
+    metadata: meta,
     headers: { "X-MyShare-Client": clientId },
     onError(err) {
       patch(key, { status: "error", error: String((err as Error).message || err) });

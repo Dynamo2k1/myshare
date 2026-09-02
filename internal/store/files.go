@@ -140,6 +140,98 @@ func (db *DB) DeleteFile(ctx context.Context, id string) (hash string, orphaned 
 	return hash, orphaned, nil
 }
 
+// AllLiveFiles returns every live file (optionally filtered by kind), ordered
+// oldest first. Used to build a bulk zip; callers stream the result.
+func (db *DB) AllLiveFiles(ctx context.Context, kind string) ([]File, error) {
+	q := `SELECT id,name,kind,mime,size,hash,created_at,updated_at
+	        FROM files WHERE deleted_at IS NULL`
+	var args []any
+	if kind != "" {
+		q += ` AND kind = ?`
+		args = append(args, kind)
+	}
+	q += ` ORDER BY created_at ASC`
+	rows, err := db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []File
+	for rows.Next() {
+		var f File
+		if err := rows.Scan(&f.ID, &f.Name, &f.Kind, &f.MIME, &f.Size,
+			&f.Hash, &f.CreatedAt, &f.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+	return out, rows.Err()
+}
+
+// DeleteAllFiles soft-deletes every live file (optionally filtered by kind),
+// releases each blob reference, and returns the hashes that became orphaned so
+// the caller can remove their bytes. Runs in one transaction.
+func (db *DB) DeleteAllFiles(ctx context.Context, kind string) (orphanedHashes []string, count int, err error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	q := `SELECT id, hash FROM files WHERE deleted_at IS NULL`
+	var args []any
+	if kind != "" {
+		q += ` AND kind = ?`
+		args = append(args, kind)
+	}
+	rows, err := tx.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	type fh struct{ id, hash string }
+	var items []fh
+	for rows.Next() {
+		var x fh
+		if err := rows.Scan(&x.id, &x.hash); err != nil {
+			rows.Close()
+			return nil, 0, err
+		}
+		items = append(items, x)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	now := now()
+	for _, it := range items {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE files SET deleted_at = ? WHERE id = ?`, now, it.id); err != nil {
+			return nil, 0, err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE shares SET revoked_at = ? WHERE file_id = ? AND revoked_at IS NULL`,
+			now, it.id); err != nil {
+			return nil, 0, err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`DELETE FROM search_fts WHERE entity = 'file' AND ref_id = ?`, it.id); err != nil {
+			return nil, 0, err
+		}
+		orphaned, err := db.ReleaseBlob(ctx, tx, it.hash)
+		if err != nil {
+			return nil, 0, err
+		}
+		if orphaned {
+			orphanedHashes = append(orphanedHashes, it.hash)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, 0, err
+	}
+	return orphanedHashes, len(items), nil
+}
+
 // ListFiles returns a page of live files.
 func (db *DB) ListFiles(ctx context.Context, opt FileListOptions) (Page[File], error) {
 	if opt.Limit <= 0 || opt.Limit > 200 {

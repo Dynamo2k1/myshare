@@ -18,12 +18,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/ranauzair/myshare/internal/api"
-	"github.com/ranauzair/myshare/internal/auth"
-	"github.com/ranauzair/myshare/internal/config"
-	"github.com/ranauzair/myshare/internal/sse"
-	"github.com/ranauzair/myshare/internal/store"
-	"github.com/ranauzair/myshare/web"
+	"github.com/dynamo2k1/myshare/internal/api"
+	"github.com/dynamo2k1/myshare/internal/auth"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/sse"
+	"github.com/dynamo2k1/myshare/internal/store"
+	"github.com/dynamo2k1/myshare/web"
 )
 
 // Options configures New.
@@ -44,6 +44,9 @@ type Options struct {
 // New returns the root http.Handler.
 func New(o Options) http.Handler {
 	r := chi.NewRouter()
+	// accessControl inspects the real TCP peer, so it must run BEFORE RealIP
+	// (which would otherwise let a client spoof its address via X-Forwarded-For).
+	r.Use(accessControl(o.Cfg.Access))
 	r.Use(middleware.RealIP)
 	r.Use(requestLogger(o.Log))
 	r.Use(middleware.Recoverer)

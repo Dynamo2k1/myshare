@@ -14,10 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ranauzair/myshare/internal/app"
-	"github.com/ranauzair/myshare/internal/config"
-	"github.com/ranauzair/myshare/internal/diskusage"
-	"github.com/ranauzair/myshare/internal/netinfo"
+	"github.com/dynamo2k1/myshare/internal/app"
+	"github.com/dynamo2k1/myshare/internal/config"
+	"github.com/dynamo2k1/myshare/internal/diskusage"
+	"github.com/dynamo2k1/myshare/internal/netinfo"
 )
 
 func addServeFlags(cmd *cobra.Command) {
@@ -30,6 +30,9 @@ func addServeFlags(cmd *cobra.Command) {
 	f.Bool("auth", false, "require a password (set it with: myshare set-password)")
 	f.String("log-level", "", "debug | info | warn | error (default info)")
 	f.Bool("tls", false, "serve HTTPS with a self-signed certificate (enables full clipboard support on LAN)")
+	f.String("access", "", "who may connect: local | lan | public  (default: local, or lan when --host is 0.0.0.0)")
+	f.String("dir", "", "serve this real folder in the Files tab (browse, upload, delete real files)")
+	f.Bool("ephemeral", false, "keep MyShare's own state in a temp dir and delete it on exit (never touches served files)")
 	f.String("cleanup-interval", "", "how often to run background cleanup (e.g. 1h; default 1h)")
 	f.String("config", "", "path to a TOML config file")
 	f.String("dev-proxy", "", "proxy non-API routes to a Vite dev server (development only)")
@@ -71,6 +74,18 @@ func overridesFromFlags(cmd *cobra.Command) config.Overrides {
 		v, _ := f.GetBool("tls")
 		ov.TLS = &v
 	}
+	if f.Changed("access") {
+		v, _ := f.GetString("access")
+		ov.Access = &v
+	}
+	if f.Changed("dir") {
+		v, _ := f.GetString("dir")
+		ov.ServeDir = &v
+	}
+	if f.Changed("ephemeral") {
+		v, _ := f.GetBool("ephemeral")
+		ov.Ephemeral = &v
+	}
 	if f.Changed("cleanup-interval") {
 		v, _ := f.GetString("cleanup-interval")
 		ov.CleanupInterval = &v
@@ -82,8 +97,13 @@ func overridesFromFlags(cmd *cobra.Command) config.Overrides {
 	return ov
 }
 
-func runServe(cmd *cobra.Command) error {
-	cfg, err := config.Load(overridesFromFlags(cmd))
+func runServe(cmd *cobra.Command, args []string) error {
+	ov := overridesFromFlags(cmd)
+	// A positional argument is shorthand for --dir.
+	if len(args) == 1 && ov.ServeDir == nil {
+		ov.ServeDir = &args[0]
+	}
+	cfg, err := config.Load(ov)
 	if err != nil {
 		return err
 	}
@@ -110,13 +130,21 @@ func runServe(cmd *cobra.Command) error {
 
 	printBanner(cfg, application.Disk())
 
-	if cfg.PublicHost() {
-		log.Warn("MyShare is bound to a non-loopback address and is reachable by other devices on your network",
-			"host", cfg.Host, "auth", cfg.Auth)
+	switch cfg.Access {
+	case "public":
+		log.Warn("access=public — this server accepts connections from ANY address, including the internet. " +
+			"Only do this behind a VPN or a trusted reverse proxy, and with --auth enabled.")
 		if !cfg.Auth {
+			log.Warn("authentication is OFF while access=public. Run 'myshare set-password' and restart with --auth.")
+		}
+	case "lan":
+		log.Info("access=lan — only devices on your local network can connect (loopback + private IP ranges).")
+		if cfg.PublicHost() && !cfg.Auth {
 			log.Warn("authentication is OFF — anyone on your LAN can read and upload files. " +
 				"Enable it with --auth after running: myshare set-password")
 		}
+	default: // local
+		log.Info("access=local — only this machine can connect.")
 	}
 
 	if err := application.Serve(ctx, ln); err != nil {
@@ -169,17 +197,38 @@ func printBanner(cfg config.Config, du diskusage.Usage) {
 		fmt.Printf("  LAN:      (disabled — start with --host 0.0.0.0 to reach this from %s)\n", ip)
 	}
 	fmt.Println()
-	fmt.Printf("  Data:     %s\n", cfg.DataDir)
+	if cfg.DirectoryMode() {
+		fmt.Printf("  Serving:  %s   (real folder — the Files tab browses it)\n", cfg.ServeDir)
+	}
+	if cfg.Ephemeral {
+		fmt.Println("  State:    temporary — MyShare's database is deleted on exit (served files are kept)")
+	} else {
+		fmt.Printf("  Data:     %s\n", cfg.DataDir)
+	}
 	if du.Total > 0 {
 		fmt.Printf("  Storage:  %s used, %s free (%s)\n",
 			human(int64(du.Used)), human(int64(du.Free)), du.FSType)
 	}
+	fmt.Printf("  Access:   %s%s\n", cfg.Access, accessNote(cfg.Access))
 	if cfg.Auth {
 		fmt.Println("  Auth:     enabled")
 	}
 	fmt.Println()
 	fmt.Println("  Press Ctrl+C to stop.")
 	fmt.Println()
+}
+
+func accessNote(mode string) string {
+	switch mode {
+	case "local":
+		return "  (this machine only)"
+	case "lan":
+		return "  (local network only)"
+	case "public":
+		return "  (⚠ reachable from anywhere)"
+	default:
+		return ""
+	}
 }
 
 func newLogger(level string) *slog.Logger {

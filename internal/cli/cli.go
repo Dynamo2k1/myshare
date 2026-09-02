@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ranauzair/myshare/internal/api"
+	"github.com/dynamo2k1/myshare/internal/api"
 )
 
 // Execute runs the root command. version is stamped from main via the linker.
@@ -27,12 +27,16 @@ func newRootCmd(version string) *cobra.Command {
 		Long: `MyShare is a single-binary, self-hosted web app for moving text, screenshots
 and large files between your own devices over localhost or your LAN.
 
-Run "myshare" with no arguments to start the server on 127.0.0.1:8787.`,
+Run "myshare" with no arguments to start the server on 127.0.0.1:8787.
+Pass a directory to serve its real contents in the Files tab:
+    myshare ~/Downloads
+    myshare . --ephemeral        # serve here; keep no state after exit`,
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServe(cmd)
+			return runServe(cmd, args)
 		},
 	}
 	root.SetVersionTemplate("myshare {{.Version}}\n")

@@ -1,0 +1,42 @@
+name: Deploy docs to Vercel
+
+# The landing page in docs/ is a static site. If you connect the repo in the
+# Vercel dashboard (Root Directory = docs), Vercel auto-deploys on every push
+# and you do NOT need this workflow.
+#
+# Use this workflow only if you'd rather deploy from CI. It runs when docs/ (or
+# this file) changes AND the three Vercel secrets are configured:
+#   VERCEL_TOKEN     - https://vercel.com/account/tokens
+#   VERCEL_ORG_ID    - from .vercel/project.json after `vercel link`
+#   VERCEL_PROJECT_ID
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "vercel.json"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Skip cleanly if the secrets aren't set (e.g. on a fork).
+    if: >-
+      ${{ vars.VERCEL_ENABLED == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+
+      - name: Deploy
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+          vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
