@@ -31,7 +31,7 @@ AirForShare that runs on your own machine".
 ### From source (any OS with Go 1.24+)
 
 ```sh
-git clone <this-repo> && cd sharehub
+git clone https://github.com/Dynamo2k1/MyShare.git && cd MyShare
 make build          # builds the frontend (if npm is present) and ./bin/myshare
 make install        # copies ./bin/myshare to ~/.local/bin  (no root)
 ```
