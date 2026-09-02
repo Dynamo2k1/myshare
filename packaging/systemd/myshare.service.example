@@ -1,0 +1,28 @@
+# Reference systemd *user* unit. `myshare service install` generates this file
+# at ~/.config/systemd/user/myshare.service with your resolved settings baked in
+# — you normally don't edit this by hand.
+#
+# Manual install:
+#   mkdir -p ~/.config/systemd/user
+#   cp myshare.service.example ~/.config/systemd/user/myshare.service
+#   # edit ExecStart below
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now myshare.service
+#   loginctl enable-linger "$USER"     # keep running after logout
+
+[Unit]
+Description=MyShare self-hosted file and clipboard transfer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/myshare --host 127.0.0.1 --port 8787 --data-dir %h/MyShare
+WorkingDirectory=%h/MyShare
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Reference launchd LaunchAgent. `myshare service install` writes this to
+  ~/Library/LaunchAgents/com.myshare.agent.plist with your settings.
+
+  Manual install:
+    cp com.myshare.agent.plist.example ~/Library/LaunchAgents/com.myshare.agent.plist
+    # edit the ProgramArguments paths
+    launchctl load ~/Library/LaunchAgents/com.myshare.agent.plist
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.myshare.agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOU/.local/bin/myshare</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8787</string>
+    <string>--data-dir</string><string>/Users/YOU/MyShare</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/YOU/MyShare</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/YOU/MyShare/logs/myshare.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOU/MyShare/logs/myshare.err.log</string>
+</dict>
+</plist>

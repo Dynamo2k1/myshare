@@ -1,0 +1,25 @@
+# Build output
+/bin/
+/dist-bin/
+*.exe
+
+# Frontend
+/web/node_modules/
+/web/.vite/
+# NOTE: web/dist/ IS committed — it is embedded into the Go binary. The stub in
+# git is replaced by `npm run build`; commit real builds when releasing.
+
+# Local data / runtime
+*.db
+*.db-wal
+*.db-shm
+/MyShare/
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Build info
+*.tsbuildinfo

@@ -1,0 +1,41 @@
+# MyShare configuration file (TOML).
+#
+# Search order: --config flag, then $MYSHARE_CONFIG, then the OS default:
+#   Linux    ~/.config/myshare/config.toml
+#   macOS    ~/Library/Application Support/myshare/config.toml
+#   Windows  %APPDATA%\myshare\config.toml
+#
+# Precedence (highest first): CLI flags > MYSHARE_* env vars > this file > defaults.
+
+# Address to bind. Keep 127.0.0.1 for localhost-only. Use "0.0.0.0" to allow
+# other devices on your LAN to connect (see the security notes in the README).
+host = "127.0.0.1"
+
+# TCP port. If it is already in use, MyShare exits with a clear message and a
+# suggested free port — it never silently picks another.
+port = 8787
+
+# Where the database and all file storage live. "~" is expanded.
+data_dir = "~/MyShare"
+
+# Reject uploads larger than this. "0" or "unlimited" means no limit.
+# Accepts decimal (KB/MB/GB/TB) and binary (KiB/MiB/GiB/TiB) units.
+max_file_size = "0"
+
+# Cap total stored bytes. "0" means no cap. A warning is logged at 90%.
+max_storage = "0"
+
+# Require a password. Set the password first with: myshare set-password
+auth = false
+
+# debug | info | warn | error
+log_level = "info"
+
+# Serve HTTPS with an auto-generated self-signed certificate. This makes the
+# browser Clipboard API (including copying images) work from other LAN devices,
+# at the cost of a one-time certificate warning on each device.
+tls = false
+
+# How often background cleanup runs (abandoned uploads, expired share links,
+# orphaned blobs, stale temp files). Minimum 1m.
+cleanup_interval = "1h"
